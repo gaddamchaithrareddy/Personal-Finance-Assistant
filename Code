@@ -1,116 +1,99 @@
-import streamlit as st
-import pickle
-from datetime import datetime
 import pandas as pd
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+from joblib import dump, load
+from datetime import datetime
 
-# Function to add expense
-def add_expense(category, date, amount, subcategory, note):
-    expense_data = pd.DataFrame({
-        'Date': [date],
-        'Amount': [amount],
-        'Category': [category],
-        'Subcategory': [subcategory],
-        'Note': [note]
+# Read data from CSV file (replace 'your_data.csv' with your actual file path)
+df = pd.read_csv("/content/Daily Household Transactions (1).csv")
 
-    })
-    return expense_data
+# Label encoding for the 'Category' column
+le = LabelEncoder()
+df['Category_Encoded'] = le.fit_transform(df['Category'])
 
+# Features and target variable
+X = df[['Subcategory', 'Amount', 'Date']]
+y = df['Category_Encoded']
 
-# Load categories from pickled file
-categories = pickle.load(open('categoryy (1).pkl', 'rb'))
-category_list = categories['Category'].unique()
-monthly_savings_goal = 7000
-# Set up navigation
-nav_options = ['New', 'Bills', 'Summary', 'Profile']
-selected_nav = st.sidebar.radio('', nav_options)
+# Split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Display selected section based on navigation choice
-if selected_nav == 'New':
-    st.title('Expense Tracker - Add Expense')
-    # User selects expense category
-    option = st.selectbox('Select Expense Category:', category_list)
+# Train a Random Forest Classifier
+clf = RandomForestClassifier()
+clf.fit(X_train[['Amount']], y_train)  # Adjust features as needed
 
-    # User inputs date, amount, subcategory, and note
-    date = st.date_input('Date:')
-    amount = st.number_input('Amount:')
-    subcategory = st.text_input('Subcategory:')
-    note = st.text_area('Note (optional):')
-    income_expense = st.selectbox('Income or Expense:', ['Income', 'Expense'])
-    # When "Add Expense" button is clicked
-    if st.button('Add Expense'):
-        expense_data = add_expense(option, date, amount, subcategory, note)
-        st.success('Expense added successfully!')
+# Save the trained model
+dump(clf, 'category_classifier.joblib')
 
-        # Optionally, you can display the added expense details
-        st.write('*Added Expense Details:*')
-        st.table(expense_data)
+# Get the classes from the label encoder
+classes = le.classes_
 
-elif selected_nav == 'Bills':
-    st.title('Expense Tracker - Bills')
-    # Add a dropdown for bill status
-    bill_status = st.selectbox('Select Bill Status:', ['Upcoming', 'Paid', 'Overdue'])
+# Function to predict category for a new Subcategory
+def predict_category(subcategory_description, amount, date):
+    loaded_clf = load('category_classifier.joblib')
 
-    # Display bills based on the selected status
-    bills = pickle.load(open('bills.pkl', 'rb'))
+    # Handle previously unseen labels
+    try:
+        # Check if the label is present in the classes
+        if subcategory_description in classes:
+            subcategory_encoded = le.transform([subcategory_description])[0]  # Extract the label
+            category_encoded = loaded_clf.predict([[amount]])
+            predicted_category = le.inverse_transform(category_encoded)
+        else:
+            raise ValueError(f"Unseen label: {subcategory_description}")
+    except ValueError as e:
+        # Handle the case where the label is unseen
+        predicted_category = f'Unseen Label: {subcategory_description}'
 
-    if bill_status == 'Paid':
-        st.write('Displaying Paid Bills')
-        paid_bills = bills[bills['Status'] == 'Paid']
+    return predicted_category[0]
 
-        st.table(paid_bills)
-    elif bill_status == 'Overdue':
-        st.write('Displaying Overdue Bills')
-        overdue_bills = bills[bills['Status'] == 'Overdue']
+# Expense Tracking
+def track_expense(subcategory_description, amount, date):
+    category = predict_category(subcategory_description, amount, date)
+    df_expense = pd.DataFrame({'Subcategory': [subcategory_description],
+                               'Amount': [amount],
+                               'Date': [date],
+                               'Category': [category]})
+    return df_expense
 
-        st.table(overdue_bills)
+# Bill Reminder
+def set_bill_reminder(bill_name, due_date, account_balance, bill_amount_threshold):
+    today = datetime.now()
+    due_date = datetime.strptime(due_date, '%Y-%m-%d')
+    days_until_due = (due_date - today).days
+
+    if days_until_due > 0:
+        remaining_days_message = f"{days_until_due} days" if days_until_due > 1 else "tomorrow"
+        print(f"Reminder: {bill_name} is due in {remaining_days_message}.")
+
+        # Check if account balance is below the threshold
+        if account_balance < bill_amount_threshold:
+            print(f"Alert: Low account balance! Current balance is {account_balance}.")
     else:
-        st.write('Displaying Upcoming Bills')
-        upcoming_bills = bills[~bills['Status'].isin(['Paid', 'Overdue'])]
+        print(f"The due date for {bill_name} has passed. Please check your payment status.")
+# Financial Goal Tracking
+def track_financial_goal(goal_name, target_amount, current_amount):
+    progress_percentage = (current_amount / target_amount) * 100
+    print(f"Progress for {goal_name}: {progress_percentage:.2f}%")
 
-        st.table(upcoming_bills)
-elif selected_nav == 'Summary':
-    st.title('Expense Tracker - Summary')
-    # Convert 'Date' column to datetime
-    categories['Date'] = pd.to_datetime(categories['Date'], format='%d/%m/%Y', errors='coerce',
-                                        infer_datetime_format=True)
+# Example Usage
+new_subcategory = 'Gas Station'
+new_amount = 35.0
+new_date = '2023-01-06'
 
-    selected_month = st.selectbox('Select Month:', range(1, 12))
-    selected_year = st.number_input('Enter Year:', min_value=1900, max_value=2018, value=2015)
+df_expense = track_expense(new_subcategory, new_amount, new_date)
+print("Expense Tracked:")
+print(df_expense)
 
-    # Filter categories based on the selected month and year
-    filtered_categories = categories[
-        (categories['Date'].dt.month == selected_month) & (categories['Date'].dt.year == selected_year)
-        ]
 
-    # Calculate the sum of amounts for the selected month and year
-    total_goals_amount = filtered_categories['Amount'].sum()
+# Add more bill reminders as needed
+# Example Usage
+current_account_balance = 3000
+bill_threshold = 1000
 
-    # Display the total goals amount for the selected month and year
-    st.write(f'Total Goals Amount for {selected_month}/{selected_year}: $', total_goals_amount)
-    if total_goals_amount> 6000:
-        st.markdown(
-            f'<div style="background-color: #ffcccc; padding: 10px; border-radius: 5px;">'
-            f'<b>Alert:</b> Expenses have exceeded $6000 for the selected month!'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    # Optionally, you can display a breakdown of goals by category
-    st.write('Breakdown by Category:')
-    goals_breakdown = filtered_categories.groupby('Category')['Amount'].sum().reset_index()
-    st.table(goals_breakdown)
+set_bill_reminder('Rent', '2023-02-01', current_account_balance, bill_threshold)
 
-elif selected_nav == 'Profile':
-    st.title('Expense Tracker - Profile')
-    # Add code for displaying and managing profile information here
-    # You can include user details, settings, etc.
-    st.write("Welcome to your Expense Trackor!")
-    st.write("View and Manage your profile information.")
 
-    # Add more text or components as needed
-    st.markdown("### Personal Information")
-    st.write("Name: John Doe")
-    st.write("Email: john@example.com")
-
-    st.markdown("### Settings")
-    st.write("Notification preferences: On")
-    st.write("Theme: Light")
+track_financial_goal('Emergency Fund', 5000, 2500)
