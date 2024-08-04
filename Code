@@ -1,0 +1,116 @@
+import streamlit as st
+import pickle
+from datetime import datetime
+import pandas as pd
+
+# Function to add expense
+def add_expense(category, date, amount, subcategory, note):
+    expense_data = pd.DataFrame({
+        'Date': [date],
+        'Amount': [amount],
+        'Category': [category],
+        'Subcategory': [subcategory],
+        'Note': [note]
+
+    })
+    return expense_data
+
+
+# Load categories from pickled file
+categories = pickle.load(open('categoryy (1).pkl', 'rb'))
+category_list = categories['Category'].unique()
+monthly_savings_goal = 7000
+# Set up navigation
+nav_options = ['New', 'Bills', 'Summary', 'Profile']
+selected_nav = st.sidebar.radio('', nav_options)
+
+# Display selected section based on navigation choice
+if selected_nav == 'New':
+    st.title('Expense Tracker - Add Expense')
+    # User selects expense category
+    option = st.selectbox('Select Expense Category:', category_list)
+
+    # User inputs date, amount, subcategory, and note
+    date = st.date_input('Date:')
+    amount = st.number_input('Amount:')
+    subcategory = st.text_input('Subcategory:')
+    note = st.text_area('Note (optional):')
+    income_expense = st.selectbox('Income or Expense:', ['Income', 'Expense'])
+    # When "Add Expense" button is clicked
+    if st.button('Add Expense'):
+        expense_data = add_expense(option, date, amount, subcategory, note)
+        st.success('Expense added successfully!')
+
+        # Optionally, you can display the added expense details
+        st.write('*Added Expense Details:*')
+        st.table(expense_data)
+
+elif selected_nav == 'Bills':
+    st.title('Expense Tracker - Bills')
+    # Add a dropdown for bill status
+    bill_status = st.selectbox('Select Bill Status:', ['Upcoming', 'Paid', 'Overdue'])
+
+    # Display bills based on the selected status
+    bills = pickle.load(open('bills.pkl', 'rb'))
+
+    if bill_status == 'Paid':
+        st.write('Displaying Paid Bills')
+        paid_bills = bills[bills['Status'] == 'Paid']
+
+        st.table(paid_bills)
+    elif bill_status == 'Overdue':
+        st.write('Displaying Overdue Bills')
+        overdue_bills = bills[bills['Status'] == 'Overdue']
+
+        st.table(overdue_bills)
+    else:
+        st.write('Displaying Upcoming Bills')
+        upcoming_bills = bills[~bills['Status'].isin(['Paid', 'Overdue'])]
+
+        st.table(upcoming_bills)
+elif selected_nav == 'Summary':
+    st.title('Expense Tracker - Summary')
+    # Convert 'Date' column to datetime
+    categories['Date'] = pd.to_datetime(categories['Date'], format='%d/%m/%Y', errors='coerce',
+                                        infer_datetime_format=True)
+
+    selected_month = st.selectbox('Select Month:', range(1, 12))
+    selected_year = st.number_input('Enter Year:', min_value=1900, max_value=2018, value=2015)
+
+    # Filter categories based on the selected month and year
+    filtered_categories = categories[
+        (categories['Date'].dt.month == selected_month) & (categories['Date'].dt.year == selected_year)
+        ]
+
+    # Calculate the sum of amounts for the selected month and year
+    total_goals_amount = filtered_categories['Amount'].sum()
+
+    # Display the total goals amount for the selected month and year
+    st.write(f'Total Goals Amount for {selected_month}/{selected_year}: $', total_goals_amount)
+    if total_goals_amount> 6000:
+        st.markdown(
+            f'<div style="background-color: #ffcccc; padding: 10px; border-radius: 5px;">'
+            f'<b>Alert:</b> Expenses have exceeded $6000 for the selected month!'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    # Optionally, you can display a breakdown of goals by category
+    st.write('Breakdown by Category:')
+    goals_breakdown = filtered_categories.groupby('Category')['Amount'].sum().reset_index()
+    st.table(goals_breakdown)
+
+elif selected_nav == 'Profile':
+    st.title('Expense Tracker - Profile')
+    # Add code for displaying and managing profile information here
+    # You can include user details, settings, etc.
+    st.write("Welcome to your Expense Trackor!")
+    st.write("View and Manage your profile information.")
+
+    # Add more text or components as needed
+    st.markdown("### Personal Information")
+    st.write("Name: John Doe")
+    st.write("Email: john@example.com")
+
+    st.markdown("### Settings")
+    st.write("Notification preferences: On")
+    st.write("Theme: Light")
